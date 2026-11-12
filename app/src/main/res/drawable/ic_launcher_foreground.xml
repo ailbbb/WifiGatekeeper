@@ -4,22 +4,28 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Shield body -->
+    <!-- Outer shield (teal) -->
     <path
         android:fillColor="#529286"
-        android:pathData="M54,26 L74,34 L74,54 C74,66 65.5,76.5 54,80 C42.5,76.5 34,66 34,54 L34,34 Z" />
-    <!-- Wi-Fi arcs in white -->
+        android:pathData="M54,20 L82,30 L82,55 C82,72.5 70.5,84 54,88.5 C37.5,84 26,72.5 26,55 L26,30 Z" />
+    <!-- Inner shield (dark inset for depth) -->
+    <path
+        android:fillColor="#1D4350"
+        android:pathData="M54,26.5 L76,34.5 L76,55 C76,68.5 66.5,78.5 54,82.5 C41.5,78.5 32,68.5 32,55 L32,34.5 Z" />
+    <!-- Wi-Fi arcs + dot (white) -->
     <path
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="3.5"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
         android:fillColor="#00000000"
-        android:pathData="M42,52 A17,17 0 0 1 66,52" />
+        android:pathData="M40,52.5 A19.5,19.5 0 0 1 68,52.5" />
     <path
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="3.5"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
         android:fillColor="#00000000"
-        android:pathData="M47,58 A10,10 0 0 1 61,58" />
+        android:pathData="M46,59.5 A11.5,11.5 0 0 1 62,59.5" />
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M54,64.5 A3.2,3.2 0 1 1 53.99,64.5 Z" />
+        android:pathData="M54,69.5 A3.6,3.6 0 1 1 53.99,69.5 Z" />
 </vector>

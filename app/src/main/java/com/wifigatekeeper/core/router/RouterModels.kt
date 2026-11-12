@@ -10,6 +10,10 @@ enum class RouterKind(val label: String, val hint: String) {
         "TP-Link Classic",
         "WR940N / WR841N and similar models with the blue-green userRpm interface.",
     ),
+    TP_LINK_NEW(
+        "TP-Link New",
+        "Newer TP-Link 11N firmware (WR940N v6+, WR841N v13+) with WlanMacFilterRpm pages.",
+    ),
 }
 
 /** A device observed on the LAN during a scan. */

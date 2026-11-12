@@ -80,6 +80,52 @@ object RouterPageParser {
         return match.groupValues[1] != "0"
     }
 
+    // ---------- newer 11N firmware (WR940N v6 / WR841N v13+ WlanMacFilterRpm) ----------
+
+    /**
+     * Extracts the `wlanFilterPara` state array from a v6-style page.
+     * Meaning of the indices used here: 0 = filtering enabled (0/1),
+     * 1 = rule (0 = deny the listed, 1 = allow the listed), 3 = current page,
+     * 5 = entry count, 6 = list row stride.
+     */
+    fun parseNewFilterParams(html: String): IntArray? {
+        val block = Regex("wlanFilterPara\\s*=\\s*new\\s*Array\\s*\\(([^)]*)\\)", RegexOption.DOT_MATCHES_ALL)
+            .find(html) ?: return null
+        val numbers = Regex("-?\\d+").findAll(block.groupValues[1]).map { it.value.toInt() }.toList()
+        return if (numbers.size >= 7) numbers.toIntArray() else null
+    }
+
+    /** True when the page carries the v6 MAC-filter state marker. */
+    fun looksLikeNewFilterPage(html: String): Boolean =
+        html.contains("wlanFilterPara")
+
+    /**
+     * Extracts the `wlanFilterList` rows of a v6-style page. Row layout with the
+     * stride from wlanFilterPara[6]: mac, status, privilege, WEP key, description.
+     * The real array mixes quoted strings ("AA:BB:...") with bare numbers
+     * (status, privilege), so both token shapes are captured with their order.
+     */
+    fun parseNewFilterEntries(html: String): List<List<String>> {
+        val params = parseNewFilterParams(html)
+        val stride = params?.get(6)?.takeIf { it > 0 } ?: 5
+        val block = Regex("wlanFilterList\\s*=\\s*new\\s*Array\\s*\\(([^)]*)\\)", RegexOption.DOT_MATCHES_ALL)
+            .find(html) ?: return emptyList()
+        val tokenRegex = Regex("\"([^\"]*)\"|(-?\\d+)")
+        val tokens = tokenRegex.findAll(block.groupValues[1]).map { match ->
+            if (match.groupValues[2].isNotEmpty() && match.groupValues[1].isEmpty()) {
+                match.groupValues[2]
+            } else {
+                match.groupValues[1]
+            }
+        }.toList()
+        if (tokens.isEmpty()) return emptyList()
+        return tokens.chunked(stride).filter { it.size >= 3 }
+    }
+
+    /** Filtering state from a v6-style page (wlanFilterPara[0]); null = unknown. */
+    fun parseNewFilteringEnabled(html: String): Boolean? =
+        parseNewFilterParams(html)?.get(0)?.let { it != 0 }
+
     /** True when the page looks like a login form or redirect instead of real content. */
     fun looksLikeLoginPage(html: String): Boolean {
         return html.contains("LoginRpm") ||

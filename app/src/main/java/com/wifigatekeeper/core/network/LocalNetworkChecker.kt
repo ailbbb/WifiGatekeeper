@@ -56,4 +56,13 @@ class LocalNetworkChecker(context: Context) {
             .mapNotNull { it.gateway?.hostAddress }
             .firstOrNull { it?.contains(':') == false }
     }
+
+    /** This phone's own IPv4 on the current Wi-Fi link (used to spot its MAC in scans). */
+    fun currentLocalIp(): String? {
+        val (_, link) = activeTransport() ?: return null
+        val linkProperties = link ?: return null
+        return linkProperties.linkAddresses
+            .firstOrNull { it.address is Inet4Address }
+            ?.address?.hostAddress
+    }
 }

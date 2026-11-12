@@ -13,15 +13,15 @@ android {
         applicationId = "com.wifigatekeeper"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
     }
 
     signingConfigs {
         getByName("debug") {
-            // Persisted copy of the key that signed v1.1.0, so rebuilt APKs
-            // stay update-compatible. Falls back to the default when absent.
-            val persisted = file("/home/z/my-project/keys/debug.keystore")
+            // Persistent keystore committed to the repo, so every rebuild signs
+            // with the same key and updates install cleanly over old versions.
+            val persisted = rootProject.file("keys/debug.keystore")
             if (persisted.exists()) storeFile = persisted
         }
     }

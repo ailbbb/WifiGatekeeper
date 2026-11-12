@@ -96,6 +96,23 @@ class TpLinkClassicRouterClient(
             Result.failure(mapError(e))
         }
 
+    /**
+     * Classic userRpm pages are GET-driven (query parameters carry the form
+     * fields); POST stays as a fallback for firmwares that want a body. Trying
+     * GET first avoids the "HTTP 500" the old POST-only path produced on
+     * several firmware revisions.
+     */
+    private suspend fun saveWithQuery(path: String, fields: Map<String, String>): Result<Unit> {
+        val query = fields.entries.joinToString("&") { (k, v) ->
+            java.net.URLEncoder.encode(k, "UTF-8") + "=" + java.net.URLEncoder.encode(v, "UTF-8")
+        }
+        getHtml("$path?$query").fold(
+            onSuccess = { return Result.success(Unit) },
+            onFailure = { },
+        )
+        return postForm(path, fields)
+    }
+
     private fun mapError(e: Throwable): RouterException = when (e) {
         is RouterException -> e
         is java.io.IOException ->
@@ -116,6 +133,15 @@ class TpLinkClassicRouterClient(
         val login = getHtml(LOGIN_PATH)
         if (login.isFailure) {
             return Result.failure(login.exceptionOrNull() ?: RouterException("Login failed."))
+        }
+        // The filter page is what DISTINGUISHES this family from the newer
+        // WlanMacFilterRpm firmware: login + DHCP pages exist on both, so the
+        // probe must confirm the classic filter page really answers.
+        val filterPage = getHtml(MAC_FILTER_PATH)
+        if (filterPage.isFailure) {
+            return Result.failure(
+                RouterException("No classic WlanAccessRpm page - try the TP-Link New profile."),
+            )
         }
         return fetchConnectedDevices().map { it.size }
     }
@@ -146,7 +172,7 @@ class TpLinkClassicRouterClient(
             ?: return Result.failure(RouterException("Invalid MAC address: $mac"))
 
         return guarded {
-            val add = postForm(
+            val add = saveWithQuery(
                 MAC_FILTER_PATH,
                 mapOf(
                     "wlanAcEntry_mac" to normalised,
@@ -187,7 +213,7 @@ class TpLinkClassicRouterClient(
                 // Already absent - treat as success (idempotent revoke).
                 return@guarded
             }
-            postForm(
+            saveWithQuery(
                 MAC_FILTER_PATH,
                 mapOf(
                     "wlanAcEntry_sel" to entryIndex.toString(),
@@ -210,7 +236,7 @@ class TpLinkClassicRouterClient(
     }
 
     override suspend fun setMacFilteringEnabled(enabled: Boolean): Result<Unit> = guarded {
-        val post = postForm(
+        val post = saveWithQuery(
             MAC_FILTER_PATH,
             mapOf(
                 "wlanAcEnabled" to if (enabled) "1" else "0",

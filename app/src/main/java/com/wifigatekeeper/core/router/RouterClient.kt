@@ -20,6 +20,7 @@ object RouterClientFactory {
     fun create(kind: RouterKind, baseUrl: String, username: String, password: String): RouterClient {
         return when (kind) {
             RouterKind.TP_LINK_CLASSIC -> TpLinkClassicRouterClient(baseUrl, username, password)
+            RouterKind.TP_LINK_NEW -> TpLinkNewRouterClient(baseUrl, username, password)
             RouterKind.GENERIC -> GenericHttpRouterClient(baseUrl, username, password)
         }
     }

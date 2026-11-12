@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wifigatekeeper.WifiGatekeeperApp
 import com.wifigatekeeper.background.MonitoringForegroundService
+import com.wifigatekeeper.core.router.ProtectionApplier
 import com.wifigatekeeper.data.db.ActivityLogEntity
 import com.wifigatekeeper.data.db.KnownDeviceEntity
 import com.wifigatekeeper.data.repository.PollStatus
@@ -126,6 +127,23 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 onSuccess = { _macFiltering.value = enabled },
                 onFailure = { _toast.value = it.message ?: "Router refused the change." },
             )
+            _busy.value = false
+            refreshMacFiltering()
+        }
+    }
+
+    /** One-tap protection: whitelist this phone first, then enable filtering. */
+    fun protectNow() {
+        viewModelScope.launch {
+            _busy.value = true
+            when (val outcome = repository.applyProtection()) {
+                is ProtectionApplier.Outcome.FullyApplied ->
+                    _toast.value = "Protection applied: ${outcome.label} whitelisted, MAC filtering on."
+                is ProtectionApplier.Outcome.WhitelistOnly ->
+                    _toast.value = "${outcome.label} is whitelisted; enabling filtering failed: ${outcome.reason}"
+                is ProtectionApplier.Outcome.Failed ->
+                    _toast.value = outcome.message
+            }
             _busy.value = false
             refreshMacFiltering()
         }

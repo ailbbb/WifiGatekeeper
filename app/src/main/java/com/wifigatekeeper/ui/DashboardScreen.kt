@@ -1,5 +1,10 @@
 package com.wifigatekeeper.ui
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -18,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -40,6 +47,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wifigatekeeper.data.db.KnownDeviceEntity
 import com.wifigatekeeper.data.repository.PollStatus
@@ -68,6 +76,17 @@ fun DashboardScreen(onEditCredentials: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Pending", "Whitelisted", "Settings")
 
+    // Android 13+ silently drops notifications until POST_NOTIFICATIONS is
+    // granted - without it the whole accept/reject flow never reaches the user.
+    val context = LocalContext.current
+    val notificationsAllowed = remember {
+        Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
     LaunchedEffect(toast) {
         toast?.let { message ->
             // Auto-dismiss after a short read window.
@@ -82,6 +101,33 @@ fun DashboardScreen(onEditCredentials: () -> Unit) {
             .padding(16.dp),
     ) {
         StatusCard(pollStatus, monitoring, vm::setMonitoring)
+
+        if (!notificationsAllowed) {
+            Spacer(Modifier.height(8.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3D6)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = "Notifications are OFF - new-device alerts will not appear. " +
+                            "Allow them for Wi-Fi Gatekeeper.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF6B5200),
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                        )
+                    }) { Text("Enable") }
+                }
+            }
+        }
 
         Spacer(Modifier.height(12.dp))
 
@@ -127,6 +173,8 @@ fun DashboardScreen(onEditCredentials: () -> Unit) {
                     macFiltering = macFiltering,
                     interval = interval,
                     logEntries = logEntries,
+                    protectBusy = vm.busy.value,
+                    onProtect = vm::protectNow,
                     onSetMacFiltering = vm::setMacFiltering,
                     onSetInterval = vm::setPollInterval,
                     onEditCredentials = onEditCredentials,
@@ -266,12 +314,38 @@ private fun SettingsTab(
     macFiltering: Boolean?,
     interval: Int,
     logEntries: List<com.wifigatekeeper.data.db.ActivityLogEntity>,
+    protectBusy: Boolean,
+    onProtect: () -> Unit,
     onSetMacFiltering: (Boolean) -> Unit,
     onSetInterval: (Int) -> Unit,
     onEditCredentials: () -> Unit,
     onClearLog: () -> Unit,
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("🛡 One-tap protection", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = "Whitelists THIS phone, then switches MAC filtering on - " +
+                            "in that order, so you are always the first entry.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = onProtect, enabled = !protectBusy, modifier = Modifier.fillMaxWidth()) {
+                        if (protectBusy) {
+                            CircularProgressIndicator(modifier = Modifier.height(16.dp).width(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text("Protect this phone now")
+                    }
+                }
+            }
+        }
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

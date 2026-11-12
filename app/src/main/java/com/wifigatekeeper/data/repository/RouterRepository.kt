@@ -1,7 +1,10 @@
 package com.wifigatekeeper.data.repository
 
 import com.wifigatekeeper.core.network.LocalNetworkChecker
+import com.wifigatekeeper.core.network.SelfMacResolver
 import com.wifigatekeeper.core.router.DeviceScanEntry
+import com.wifigatekeeper.core.router.MacAddressValidator
+import com.wifigatekeeper.core.router.ProtectionApplier
 import com.wifigatekeeper.core.router.RouterClient
 import com.wifigatekeeper.core.router.RouterClientFactory
 import com.wifigatekeeper.core.router.RouterException
@@ -184,6 +187,40 @@ class RouterRepository(
     suspend fun probeConnection(): Result<Int> {
         val client = client() ?: return Result.failure(RouterException("No router configured yet."))
         return client.probeConnection()
+    }
+
+    /**
+     * Auto-protection: identifies this phone, whitelists it FIRST, and only
+     * then switches MAC filtering on (the reverse order would lock the phone
+     * out of its own network).
+     */
+    suspend fun applyProtection(): ProtectionApplier.Outcome {
+        val client = client() ?: return ProtectionApplier.Outcome.Failed("No router configured yet.")
+        if (!networkChecker.isOnSameNetworkAs(credentials.ip())) {
+            return ProtectionApplier.Outcome.Failed("The phone is not on the router network.")
+        }
+        val localIp = networkChecker.currentLocalIp()
+        val entries = client.fetchConnectedDevices().getOrElse {
+            return ProtectionApplier.Outcome.Failed("Could not read the device list: ${it.message}")
+        }
+        val selfMac = SelfMacResolver.resolve(localIp, entries)
+            ?.let { MacAddressValidator.normalise(it) }
+            ?: return ProtectionApplier.Outcome.Failed(
+                "Could not identify this phone's MAC - add it manually from the router page.",
+            )
+        val label = android.os.Build.MODEL.ifBlank { "My phone" }
+        val outcome = ProtectionApplier.apply(client, selfMac, label)
+        log(
+            "protection",
+            when (outcome) {
+                is ProtectionApplier.Outcome.FullyApplied ->
+                    "Protection applied: $label ($selfMac) whitelisted and MAC filtering enabled."
+                is ProtectionApplier.Outcome.WhitelistOnly ->
+                    "$label ($selfMac) whitelisted; enabling filtering failed: ${outcome.reason}"
+                is ProtectionApplier.Outcome.Failed -> "Protection failed: ${outcome.message}"
+            },
+        )
+        return outcome
     }
 
     fun recentLog(): Flow<List<ActivityLogEntity>> = logDao.recent()
