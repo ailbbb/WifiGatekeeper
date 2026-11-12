@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shield body -->
+    <path
+        android:fillColor="#529286"
+        android:pathData="M54,26 L74,34 L74,54 C74,66 65.5,76.5 54,80 C42.5,76.5 34,66 34,54 L34,34 Z" />
+    <!-- Wi-Fi arcs in white -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.5"
+        android:fillColor="#00000000"
+        android:pathData="M42,52 A17,17 0 0 1 66,52" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.5"
+        android:fillColor="#00000000"
+        android:pathData="M47,58 A10,10 0 0 1 61,58" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,64.5 A3.2,3.2 0 1 1 53.99,64.5 Z" />
+</vector>

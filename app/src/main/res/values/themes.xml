@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WifiGatekeeper" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0B1C2C</item>
+        <item name="android:statusBarColor">#0B1C2C</item>
+    </style>
+</resources>
