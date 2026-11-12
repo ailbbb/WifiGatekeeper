@@ -11,6 +11,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -123,13 +124,23 @@ fun QuickLinkScreen(
         onDispose { controller.webView.destroy() }
     }
 
+    // The back button must navigate INSIDE the browser first; only when there
+    // is no history left does it close the quick-link screen.
+    BackHandler {
+        if (controller.webView.canGoBack()) {
+            controller.webView.goBack()
+        } else {
+            onClose()
+        }
+    }
+
     // Progress of the automatic verification after credentials were captured.
     val statusText = when (val state = verifyState) {
         is VerifyState.Idle -> null
         is VerifyState.Verifying ->
             "Credentials captured from ${stateSource(capturedFrom)} - verifying…"
         is VerifyState.Verified ->
-            "Verified as ${state.kind.label} - saved. Opening dashboard…"
+            "Verified as ${state.kind.label} - saved. Applying protection…"
         is VerifyState.Failed -> state.message
     }
     val ok = verifyState is VerifyState.Verified
@@ -265,7 +276,9 @@ fun QuickLinkScreen(
                         handler?.proceed(user, pass)
                         captureCredentials(user, pass, "router login dialog")
                     },
-                    enabled = authPass.isNotBlank(),
+                    // Some ISP routers ship with an EMPTY admin password - never
+                    // block the login button just because the field is blank.
+                    enabled = true,
                 ) { Text("Log in") }
             },
             dismissButton = {
@@ -296,7 +309,7 @@ private fun verify(
             setState(
                 VerifyState.Failed(
                     "Logged in, but neither router profile accepted these credentials. " +
-                        "Use the manual setup below instead.",
+                        "Check the password and try again, or close and use manual setup.",
                 ),
             )
         }
@@ -412,13 +425,16 @@ private class QuickLinkController(
 
 /**
  * Observes HTML login forms without touching them: reports the typed values on
- * submit (capture phase) and when a password field inside a form changes.
- * Only ever injected on private LAN pages.
+ * submit (capture phase), on a click inside the form (for routers whose login
+ * is driven by a JS onclick handler instead of a real submit), and on password
+ * changes (debounced, for forms without any button). Only ever injected on
+ * private LAN pages.
  */
 private const val FORM_HOOK_JS = """
 (function() {
   if (window.__gkHook) return;
   window.__gkHook = true;
+  var timer = null;
   function report(form) {
     try {
       var u = '', p = '';
@@ -432,13 +448,27 @@ private const val FORM_HOOK_JS = """
       if (p) { window.GatekeeperBridge.onFormLogin(u, p); }
     } catch (e) {}
   }
+  function debouncedReport(form) {
+    if (timer) { clearTimeout(timer); }
+    timer = setTimeout(function() { timer = null; report(form); }, 350);
+  }
   document.addEventListener('submit', function(e) {
     if (e.target) report(e.target);
+  }, true);
+  document.addEventListener('click', function(e) {
+    var el = e.target;
+    if (!el || !el.closest) return;
+    var form = el.closest('form');
+    if (form && (el.tagName === 'BUTTON' || el.tagName === 'INPUT' || el.tagName === 'A')) {
+      // JS-driven logins run their handler after the click; read the fields
+      // once the handler had its turn.
+      setTimeout(function() { report(form); }, 300);
+    }
   }, true);
   document.addEventListener('change', function(e) {
     var el = e.target;
     if (el && (el.type || '').toLowerCase() === 'password' && el.value && el.form) {
-      report(el.form);
+      debouncedReport(el.form);
     }
   }, true);
 })();

@@ -120,6 +120,10 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { container.settingsRepository.setPollIntervalSeconds(seconds) }
     }
 
+    fun clearLog() {
+        viewModelScope.launch { repository.clearLog() }
+    }
+
     fun setMacFiltering(enabled: Boolean) {
         viewModelScope.launch {
             _busy.value = true

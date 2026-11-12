@@ -5,6 +5,7 @@
     <string name="notify_device_body_prefix">MAC: %1$s is trying to join the network.</string>
     <string name="action_accept">Accept</string>
     <string name="action_reject">Reject</string>
+    <string name="notify_accept_failed">Adding to the whitelist failed</string>
     <string name="monitoring_title">Wi-Fi Gatekeeper</string>
     <string name="monitoring_text">Monitoring your network for new devices</string>
     <string name="monitoring_stop">Stop monitoring</string>

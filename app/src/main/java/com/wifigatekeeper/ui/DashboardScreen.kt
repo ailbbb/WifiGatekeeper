@@ -178,7 +178,7 @@ fun DashboardScreen(onEditCredentials: () -> Unit) {
                     onSetMacFiltering = vm::setMacFiltering,
                     onSetInterval = vm::setPollInterval,
                     onEditCredentials = onEditCredentials,
-                    onClearLog = { vm.consumeToast() },
+                    onClearLog = vm::clearLog,
                 )
             }
         }

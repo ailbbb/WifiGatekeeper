@@ -28,8 +28,9 @@ class CredentialsStore(context: Context) {
             .apply()
     }
 
-    fun hasCredentials(): Boolean = prefs.getString(KEY_IP, null)?.isNotBlank() == true &&
-        prefs.getString(KEY_PASS, null)?.isNotBlank() == true
+    // The password is OPTIONAL on purpose: many ISP routers (RastNet among
+    // them) ship with an empty admin password. Only the IP gates "configured".
+    fun hasCredentials(): Boolean = prefs.getString(KEY_IP, null)?.isNotBlank() == true
 
     fun ip(): String = prefs.getString(KEY_IP, null).orEmpty()
 

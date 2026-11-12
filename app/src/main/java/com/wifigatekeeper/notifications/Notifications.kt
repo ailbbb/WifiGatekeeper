@@ -101,6 +101,27 @@ class Notifier(private val context: Context) {
     }
 
     private fun notificationId(mac: String): Int = mac.hashCode()
+
+    /** Shown when Accept/Reject pressed from the notification did not succeed. */
+    fun notifyActionFailed(mac: String, title: String, reason: String) {
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            notificationId(mac) + 3,
+            Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, NotificationChannels.DEVICE_ALERTS)
+            .setSmallIcon(R.drawable.ic_stat_gate)
+            .setContentTitle(title)
+            .setContentText("MAC: $mac - $reason. Tap to retry from the dashboard.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("MAC: $mac - $reason. Tap to retry from the dashboard."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
+            .build()
+        manager.notify(notificationId(mac) + 3, notification)
+    }
 }
 
 /** Executes Accept / Reject straight from the notification buttons. */
@@ -113,7 +134,21 @@ class NotificationActionReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 when (intent.action) {
-                    ACTION_ACCEPT -> app.container.repository.acceptDevice(mac)
+                    ACTION_ACCEPT -> {
+                        val result = app.container.repository.acceptDevice(mac)
+                        result.fold(
+                            onSuccess = { },
+                            // Silent failure here is how "I pressed accept and
+                            // nothing happened" happens - surface the reason.
+                            onFailure = { error ->
+                                app.container.notifier.notifyActionFailed(
+                                    mac,
+                                    context.getString(R.string.notify_accept_failed),
+                                    error.message ?: "unknown error",
+                                )
+                            },
+                        )
+                    }
                     ACTION_REJECT -> app.container.repository.rejectDevice(mac)
                 }
             } finally {
