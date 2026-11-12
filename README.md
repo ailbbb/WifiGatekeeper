@@ -4,10 +4,10 @@
 
 | | |
 |---|---|
-| **الإصدار** | v1.1.0 (versionCode 2) |
+| **الإصدار** | v1.2.0 (versionCode 3) — الربط السريع بالمتصفح |
 | **يتطلب** | أندرويد 8.0 فما فوق |
-| **اختبارات الوحدة** | 16/16 ✓ |
-| **الراوترات المدعومة** | TP-Link Classic (WR940N / WR841N وأمثالها) + Generic |
+| **اختبارات الوحدة** | 25/25 ✓ |
+| **الراوترات المدعومة** | TP-Link Classic (WR940N / WR841N وأمثالها) + Generic (اكتشاف تلقائي) |
 
 ---
 
@@ -16,10 +16,10 @@
 **أحدث إصدار (APK موقّع، 12.4 MB):**
 
 ```text
-https://github.com/ailbbb/WifiGatekeeper/releases/latest/download/WifiGatekeeper-v1.1.0.apk
+https://github.com/ailbbb/WifiGatekeeper/releases/latest/download/WifiGatekeeper-v1.2.0.apk
 ```
 
-أو حمّله مباشرة من ملفات المستودع: [`WifiGatekeeper-v1.1.0.apk`](WifiGatekeeper-v1.1.0.apk)
+أو حمّله مباشرة من ملفات المستودع: [`WifiGatekeeper-v1.2.0.apk`](WifiGatekeeper-v1.2.0.apk)
 
 ### التثبيت
 
@@ -31,6 +31,7 @@ https://github.com/ailbbb/WifiGatekeeper/releases/latest/download/WifiGatekeeper
 
 ## ✨ الميزات
 
+- **⚡ الربط السريع بالمتصفح (جديد في v1.2.0) — الأسهل**: شاشة الإعداد تفتح صفحة الراوتر الحقيقية داخل متصفح مدمج؛ سجّل الدخول كالمعتاد والتطبيق يقرأ بيانات الدخول تلقائياً، يتحقق منها، ويكتشف نوع الراوتر وحده — لا كتابة يدوية ولا اختيار نوع. المتصفح مقصور على عناوين الشبكة المحلية فقط (حماية من التصيد)، والبيانات تبقى مشفرة على هاتفك.
 - **إشعارات فورية تفاعلية** — أزرار «قبول» و«رفض» مباشرة من شريط الإشعارات لأي جهاز جديد يحاول الاتصال.
 - **قائمة بيضاء (Whitelist)** — الأجهزة المسموحة فقط تدخل الشبكة؛ القبول يضيف الجهاز لقائمة MAC filtering في الراوتر آلياً.
 - **دعم TP-Link Classic** — راوترات WR940N / WR841N وأسرتها (مصادقة HTTP Basic + صفحات `/userRpm/*.htm`).
@@ -39,14 +40,16 @@ https://github.com/ailbbb/WifiGatekeeper/releases/latest/download/WifiGatekeeper
 - **عمل مستمر** — خدمة أمامية (Foreground Service) مع احتياطي WorkManager، وإعادة تشغيل تلقائية بعد إقلاع الهاتف.
 - **بيانات محمية** — بيانات اعتماد الراوتر مشفّرة، وقاعدة بيانات Room وإعدادات DataStore.
 
+> **لماذا لا يوجد زر WPS؟** نظام أندرويد أزال دعم WPS من التطبيقات منذ الإصدار 9، فلا يمكن لأي تطبيق حديث الضغط على زر الراوتر أو قراءة رمزه — الربط السريع بالمتصفح أعلاه هو البديل العملي والآمن. كما يصلح v1.2.0 مشكلة كان قد يحجب فيها أندرويد اتصال التطبيق بـ `http://` للراوتر على بعض الأجهزة.
+
 ---
 
 ## 🗂 الأدلة (مجلد docs)
 
 | الملف | الوصف |
 |---|---|
-| [`دليل_الربط_بالصور_WiFi_Gatekeeper.docx`](docs/دليل_الربط_بالصور_WiFi_Gatekeeper.docx) | دليل مصوّر خطوة بخطوة (9 صفحات) لربط التطبيق بالراوتر |
-| [`دليل_استخدام_WiFi_Gatekeeper.docx`](docs/دليل_استخدام_WiFi_Gatekeeper.docx) | دليل الاستخدام الشامل v1.1.0 — كل الميزات + المشاكل الشائعة وحلولها |
+| [`دليل_الربط_بالصور_WiFi_Gatekeeper.docx`](docs/دليل_الربط_بالصور_WiFi_Gatekeeper.docx) | دليل مصوّر خطوة بخطوة (10 صفحات) لربط التطبيق بالراوتر — يشمل طريقة الربط السريع بالمتصفح |
+| [`دليل_استخدام_WiFi_Gatekeeper.docx`](docs/دليل_استخدام_WiFi_Gatekeeper.docx) | دليل الاستخدام الشامل v1.2.0 — كل الميزات + المشاكل الشائعة وحلولها |
 | `docs/images/` | الصور التوضيحية المستخدمة في الدليل المُصوّر |
 
 ---
@@ -65,10 +68,10 @@ https://github.com/ailbbb/WifiGatekeeper/releases/latest/download/WifiGatekeeper
 
 ```
 app/src/main/java/com/wifigatekeeper/
-  core/router/     عملاء الراوتر (TP-Link Classic, Generic)، المحلل، التحقق
-  core/network/    فحوصات الشبكة المحلية / البوابة
+  core/router/     عملاء الراوتر (TP-Link Classic, Generic)، كاشف النوع، المحلل، التحقق
+  core/network/    فحوصات الشبكة المحلية / البوابة + حارس عناوين LAN للمتصفح الداخلي
   data/            Room DB، بيانات اعتماد مشفرة، إعدادات DataStore، المستودع
   notifications/   قنوات الإشعارات، التنبيهات التفاعلية، مستقبل الأزرار
   background/      خدمة المراقبة الأمامية، WorkManager، مستقبل الإقلاع
-  ui/              شاشات Compose (الإعداد + لوحة التحكم)
+  ui/              شاشات Compose (الإعداد + الربط السريع بالمتصفح + لوحة التحكم)
 ```

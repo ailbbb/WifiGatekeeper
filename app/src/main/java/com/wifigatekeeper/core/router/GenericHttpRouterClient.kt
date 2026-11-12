@@ -50,7 +50,7 @@ class GenericHttpRouterClient(
     private fun request(path: String): Request = Request.Builder()
         .url("$base$path")
         .header("Authorization", basicHeader)
-        .header("User-Agent", "WifiGatekeeper/1.1")
+        .header("User-Agent", "WifiGatekeeper/1.2")
         .build()
 
     private suspend fun getHtml(path: String): Result<String> =

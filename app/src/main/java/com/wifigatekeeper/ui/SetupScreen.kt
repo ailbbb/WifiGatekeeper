@@ -61,12 +61,27 @@ fun SetupScreen(onDone: () -> Unit) {
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var testOk by remember { mutableStateOf(false) }
+    var quickLink by remember { mutableStateOf(false) }
 
     // Prefill with the real gateway of the current Wi-Fi when discoverable.
     LaunchedEffect(Unit) {
         container.networkChecker.currentGateway()?.let { gateway ->
             if (gateway.isNotBlank()) routerIp = gateway
         }
+    }
+
+    // The quick-link browser flow replaces this screen entirely.
+    if (quickLink) {
+        QuickLinkScreen(
+            gatewayUrl = "http://" + routerIp.trim(),
+            onLinked = { ip, username, password, kind ->
+                container.credentialsStore.save(ip, username, password, kind.name)
+                MonitoringForegroundService.start(context)
+                onDone()
+            },
+            onClose = { quickLink = false },
+        )
+        return
     }
 
     Column(
@@ -89,6 +104,31 @@ fun SetupScreen(onDone: () -> Unit) {
             color = MaterialTheme.colorScheme.primary,
         )
         Spacer(Modifier.height(24.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    "⚡ Quick link (easiest)",
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Open your router's own page inside the app and log in as usual - " +
+                        "the app reads the credentials automatically, no typing here.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { quickLink = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Open browser quick link")
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
 
         OutlinedTextField(
             value = routerIp,
@@ -216,6 +256,13 @@ fun SetupScreen(onDone: () -> Unit) {
         ) {
             Text("Skip test (advanced)")
         }
+        Text(
+            text = "No WPS option? Android 9+ removed WPS from apps entirely, so the " +
+                "browser quick link above is the safe replacement.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = 8.dp),
+        )
         Spacer(Modifier.height(24.dp))
     }
 }

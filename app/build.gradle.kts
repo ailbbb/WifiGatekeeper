@@ -13,8 +13,17 @@ android {
         applicationId = "com.wifigatekeeper"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            // Persisted copy of the key that signed v1.1.0, so rebuilt APKs
+            // stay update-compatible. Falls back to the default when absent.
+            val persisted = file("/home/z/my-project/keys/debug.keystore")
+            if (persisted.exists()) storeFile = persisted
+        }
     }
 
     buildTypes {

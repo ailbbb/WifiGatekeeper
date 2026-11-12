@@ -44,7 +44,7 @@ class TpLinkClassicRouterClient(
         val builder = Request.Builder()
             .url(url(path))
             .header("Authorization", basicHeader)
-            .header("User-Agent", "WifiGatekeeper/1.1")
+            .header("User-Agent", "WifiGatekeeper/1.2")
         if (referer != null) builder.header("Referer", referer)
         return builder.build()
     }
@@ -79,7 +79,7 @@ class TpLinkClassicRouterClient(
                     .url(url(path))
                     .header("Authorization", basicHeader)
                     .header("Referer", url(path))
-                    .header("User-Agent", "WifiGatekeeper/1.1")
+                    .header("User-Agent", "WifiGatekeeper/1.2")
                     .post(body)
                     .build()
                 http.newCall(post).execute().use { response ->
