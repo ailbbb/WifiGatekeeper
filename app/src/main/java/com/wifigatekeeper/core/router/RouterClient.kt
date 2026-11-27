@@ -17,11 +17,25 @@ interface RouterClient {
 
 /** Builds the concrete client for the selected router kind. */
 object RouterClientFactory {
-    fun create(kind: RouterKind, baseUrl: String, username: String, password: String): RouterClient {
+    /**
+     * [socketFactory] pins every connection to the Wi-Fi transport when the
+     * phone also has mobile data (see [com.wifigatekeeper.core.network.LanNetworkBinding]);
+     * null keeps OkHttp's default routing.
+     */
+    fun create(
+        kind: RouterKind,
+        baseUrl: String,
+        username: String,
+        password: String,
+        socketFactory: javax.net.SocketFactory? = null,
+    ): RouterClient {
         return when (kind) {
-            RouterKind.TP_LINK_CLASSIC -> TpLinkClassicRouterClient(baseUrl, username, password)
-            RouterKind.TP_LINK_NEW -> TpLinkNewRouterClient(baseUrl, username, password)
-            RouterKind.GENERIC -> GenericHttpRouterClient(baseUrl, username, password)
+            RouterKind.TP_LINK_CLASSIC ->
+                TpLinkClassicRouterClient(baseUrl, username, password, socketFactory)
+            RouterKind.TP_LINK_NEW ->
+                TpLinkNewRouterClient(baseUrl, username, password, socketFactory)
+            RouterKind.GENERIC ->
+                GenericHttpRouterClient(baseUrl, username, password, socketFactory)
         }
     }
 }

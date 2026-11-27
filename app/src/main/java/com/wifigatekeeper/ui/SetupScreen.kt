@@ -3,6 +3,7 @@ package com.wifigatekeeper.ui
 import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -84,6 +86,13 @@ fun SetupScreen(onDone: () -> Unit) {
     var quickLink by remember { mutableStateOf(false) }
     var protectionSteps by remember { mutableStateOf(listOf<ProtectStep>()) }
 
+    // Non-null while the wizard asks the user to point at their own phone
+    // (auto-resolution could not CONFIRM the MAC on the router - the usual
+    // cause is Android's randomized Wi-Fi MAC).
+    var manualPickEntries by remember {
+        mutableStateOf<List<com.wifigatekeeper.core.router.DeviceScanEntry>?>(null)
+    }
+
     // Prefill with the real gateway of the current Wi-Fi when discoverable.
     LaunchedEffect(Unit) {
         container.networkChecker.currentGateway()?.let { gateway ->
@@ -109,6 +118,7 @@ fun SetupScreen(onDone: () -> Unit) {
                     user = linkedUser,
                     pass = linkedPass,
                     onSteps = { protectionSteps = it },
+                    onNeedManualPick = { manualPickEntries = it },
                     onFinished = { MonitoringForegroundService.start(context); onDone() },
                 )
             },
@@ -119,7 +129,26 @@ fun SetupScreen(onDone: () -> Unit) {
 
     // The protection wizard also replaces this screen once it starts.
     if (protectionSteps.isNotEmpty()) {
-        ProtectionWizardScreen(steps = protectionSteps, onClose = onDone)
+        ProtectionWizardScreen(
+            steps = protectionSteps,
+            manualPickEntries = manualPickEntries,
+            onMacPicked = { mac ->
+                manualPickEntries = null
+                // The user picked from the router's own list (or typed it):
+                // confirmed by definition, safe to continue with the switch.
+                runWhitelistAndEnable(
+                    scope = scope,
+                    kind = kind,
+                    ip = routerIp,
+                    user = username,
+                    pass = password,
+                    mac = mac,
+                    onSteps = { protectionSteps = it },
+                    onFinished = { MonitoringForegroundService.start(context); onDone() },
+                )
+            },
+            onClose = onDone,
+        )
         return
     }
 
@@ -142,7 +171,7 @@ fun SetupScreen(onDone: () -> Unit) {
             color = MaterialTheme.colorScheme.onBackground,
         )
         Text(
-            text = "First-run setup  •  v1.3.0",
+            text = "First-run setup  •  v1.5.0",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -266,7 +295,7 @@ fun SetupScreen(onDone: () -> Unit) {
                     )
                 }
             },
-            enabled = !testing && routerIp.isNotBlank() && password.isNotBlank(),
+            enabled = !testing && routerIp.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (testing) {
@@ -306,6 +335,7 @@ fun SetupScreen(onDone: () -> Unit) {
                     user = username,
                     pass = password,
                     onSteps = { protectionSteps = it },
+                    onNeedManualPick = { manualPickEntries = it },
                     onFinished = { MonitoringForegroundService.start(context); onDone() },
                 )
             },
@@ -344,6 +374,7 @@ private fun runProtection(
     user: String,
     pass: String,
     onSteps: (List<ProtectStep>) -> Unit,
+    onNeedManualPick: (List<com.wifigatekeeper.core.router.DeviceScanEntry>) -> Unit,
     onFinished: () -> Unit,
 ) {
     val initial = listOf(
@@ -373,19 +404,61 @@ private fun runProtection(
                 return@launch
             },
         )
-        val mac = SelfMacResolver.resolve(localIp, entries)?.let { MacAddressValidator.normalise(it) }
-        if (mac == null) {
-            update(0, ProtectStep.State.Failed, "MAC not found - add the phone manually")
-            update(1, ProtectStep.State.Failed)
-            update(2, ProtectStep.State.Failed)
+        // IP-match first (authoritative); a sysfs hardware MAC is only trusted
+        // when the router reports the same one - Android 10+ randomizes the
+        // Wi-Fi MAC, so whitelisting it blind can lock the phone out.
+        val resolved = SelfMacResolver.resolveWithConfirmation(localIp, entries)
+        if (resolved == null || !resolved.confirmed) {
+            val detail = if (resolved != null) {
+                "Found MAC ${resolved.mac} but the router does not list it - Wi-Fi MAC " +
+                    "randomization. Pick this phone from the list below instead."
+            } else {
+                "MAC not found - pick this phone from the list below or add it manually."
+            }
+            update(0, ProtectStep.State.Failed, detail)
+            update(1, ProtectStep.State.Waiting)
+            update(2, ProtectStep.State.Waiting)
+            onNeedManualPick(entries)
             return@launch
         }
-        update(0, ProtectStep.State.Done, mac)
+        update(0, ProtectStep.State.Done, resolved.mac)
+        runWhitelistAndEnable(
+            scope, kind, ip, user, pass, resolved.mac, onSteps, onFinished,
+        )
+    }
+}
 
+/** Whitelist-then-enable sequence for an already-resolved (or user-picked) MAC. */
+private fun runWhitelistAndEnable(
+    scope: kotlinx.coroutines.CoroutineScope,
+    kind: RouterKind,
+    ip: String,
+    user: String,
+    pass: String,
+    mac: String,
+    onSteps: (List<ProtectStep>) -> Unit,
+    onFinished: () -> Unit,
+) {
+    val initial = listOf(
+        ProtectStep("Finding this phone on the network", ProtectStep.State.Done, mac),
+        ProtectStep("Adding \"${Build.MODEL.ifBlank { "this phone" }}\" to the whitelist", ProtectStep.State.Waiting),
+        ProtectStep("Enabling MAC filtering (allow-list mode)", ProtectStep.State.Waiting),
+    )
+    onSteps(initial)
+
+    fun update(index: Int, state: ProtectStep.State, detail: String = "") {
+        onSteps(initial.mapIndexed { i, step ->
+            if (i == index) step.copy(state = state, detail = detail) else step
+        })
+    }
+
+    scope.launch {
+        val client = RouterClientFactory.create(kind, ip, user, pass)
         val outcome = ProtectionApplier.apply(
             client,
             mac,
             Build.MODEL.ifBlank { "My phone" },
+            macConfirmed = true,
         ) { step ->
             when (step) {
                 ProtectionApplier.Step.WHITELIST -> update(1, ProtectStep.State.Running)
@@ -406,7 +479,7 @@ private fun runProtection(
         // Successful runs continue to the dashboard automatically; failures stay
         // visible until the user closes the wizard on purpose.
         if (outcome is ProtectionApplier.Outcome.FullyApplied) {
-            delay(1_200)
+            kotlinx.coroutines.delay(1_200)
             onFinished()
         }
     }
@@ -414,10 +487,17 @@ private fun runProtection(
 
 /** Progress surface shown while the protection sequence runs. */
 @Composable
-private fun ProtectionWizardScreen(steps: List<ProtectStep>, onClose: () -> Unit) {
+private fun ProtectionWizardScreen(
+    steps: List<ProtectStep>,
+    manualPickEntries: List<com.wifigatekeeper.core.router.DeviceScanEntry>?,
+    onMacPicked: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    var manualMac by remember { mutableStateOf("") }
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
     ) {
         Spacer(Modifier.height(40.dp))
@@ -453,11 +533,63 @@ private fun ProtectionWizardScreen(steps: List<ProtectStep>, onClose: () -> Unit
                 }
             }
         }
+
+        // Manual device picker: shown when auto-resolution could not CONFIRM
+        // the phone's MAC on the router. The user picks from the router's own
+        // list (or types the MAC) - filtering never switches on before that.
+        if (manualPickEntries != null) {
+            Spacer(Modifier.height(16.dp))
+            Text("Which one is this phone?", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Spacer(Modifier.height(8.dp))
+            for (entry in manualPickEntries.orEmpty().take(12)) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp)
+                        .clickable {
+                            if (MacAddressValidator.isValid(entry.mac)) onMacPicked(entry.mac)
+                        },
+                ) {
+                    Column(Modifier.padding(10.dp)) {
+                        Text(entry.mac, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
+                        Text(
+                            buildString {
+                                entry.name?.takeIf { it.isNotBlank() }?.let { append("Name: $it  "); }
+                                entry.ip?.let { append("IP: $it") }
+                            },
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("or type the MAC manually", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = manualMac,
+                    onValueChange = { manualMac = it },
+                    label = { Text("MAC address") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        MacAddressValidator.normalise(manualMac)?.let(onMacPicked)
+                    },
+                    enabled = MacAddressValidator.isValid(manualMac),
+                ) { Text("Use") }
+            }
+        }
+
         val allSettled = steps.isNotEmpty() && steps.none {
             it.state == ProtectStep.State.Waiting || it.state == ProtectStep.State.Running
         }
         val anyFailed = steps.any { it.state == ProtectStep.State.Failed }
-        if (allSettled && anyFailed) {
+        if (allSettled && anyFailed && manualPickEntries == null) {
             Spacer(Modifier.height(16.dp))
             Text(
                 "Setup is still usable - live monitoring works. Apply the failed steps " +

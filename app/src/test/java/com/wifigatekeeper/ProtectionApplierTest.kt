@@ -15,13 +15,15 @@ class ProtectionApplierTest {
     private class FakeClient(
         private val failAdd: Boolean = false,
         private val failEnable: Boolean = false,
+        private val whitelistAfterAdd: List<String> = emptyList(),
     ) : RouterClient {
         val calls = mutableListOf<String>()
         override val kind = RouterKind.TP_LINK_NEW
         override suspend fun probeConnection(): Result<Int> = Result.success(0)
         override suspend fun fetchConnectedDevices(): Result<List<com.wifigatekeeper.core.router.DeviceScanEntry>> =
             Result.success(emptyList())
-        override suspend fun fetchWhitelistedMacAddresses(): Result<List<String>> = Result.success(emptyList())
+        override suspend fun fetchWhitelistedMacAddresses(): Result<List<String>> =
+            Result.success(whitelistAfterAdd)
         override suspend fun addToWhitelist(mac: String, label: String): Result<Unit> {
             calls += "add"
             if (failAdd) return Result.failure(RouterException("add refused"))
@@ -41,7 +43,7 @@ class ProtectionApplierTest {
     @Test
     fun `whitelists the phone BEFORE enabling filtering`() = runTest {
         val client = FakeClient()
-        val outcome = ProtectionApplier.apply(client, "AA:BB:CC:DD:EE:FF", "Pixel 8", steps::add)
+        val outcome = ProtectionApplier.apply(client, "AA:BB:CC:DD:EE:FF", "Pixel 8", onStep = steps::add)
         assertEquals(listOf("add", "enable"), client.calls)
         assertEquals(listOf(ProtectionApplier.Step.WHITELIST, ProtectionApplier.Step.ENABLE), steps)
         assertTrue(outcome is ProtectionApplier.Outcome.FullyApplied)
@@ -62,5 +64,34 @@ class ProtectionApplierTest {
         val outcome = ProtectionApplier.apply(client, "AA:BB:CC:DD:EE:FF", "Pixel 8")
         assertEquals(listOf("add"), client.calls) // enabling never attempted
         assertTrue(outcome is ProtectionApplier.Outcome.Failed)
+    }
+
+    @Test
+    fun `unconfirmed mac vetoes EVERYTHING - nothing is sent to the router`() = runTest {
+        // Randomized-MAC risk: enabling the filter before the whitelist entry
+        // is certain locks the phone out of its own network.
+        val client = FakeClient()
+        val outcome = ProtectionApplier.apply(
+            client, "AA:BB:CC:DD:EE:FF", "Pixel 8", macConfirmed = false,
+        )
+        assertTrue(client.calls.isEmpty())
+        assertTrue(outcome is ProtectionApplier.Outcome.Failed)
+        assertTrue((outcome as ProtectionApplier.Outcome.Failed).message.contains("confirmed"))
+    }
+
+    @Test
+    fun `whitelist re-read passes when the router shows the phone`() = runTest {
+        val client = FakeClient(whitelistAfterAdd = listOf("AA:BB:CC:DD:EE:FF"))
+        val outcome = ProtectionApplier.apply(client, "AA:BB:CC:DD:EE:FF", "Pixel 8")
+        assertTrue(outcome is ProtectionApplier.Outcome.FullyApplied)
+    }
+
+    @Test
+    fun `whitelist re-read vetoes when the phone is missing from the router list`() = runTest {
+        val client = FakeClient(whitelistAfterAdd = listOf("AA:BB:CC:DD:EE:11"))
+        val outcome = ProtectionApplier.apply(client, "AA:BB:CC:DD:EE:FF", "Pixel 8")
+        assertEquals(listOf("add"), client.calls) // enable never attempted
+        assertTrue(outcome is ProtectionApplier.Outcome.Failed)
+        assertTrue((outcome as ProtectionApplier.Outcome.Failed).message.contains("does not show"))
     }
 }

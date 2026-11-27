@@ -3,6 +3,7 @@ package com.wifigatekeeper
 import android.app.Application
 import android.content.Context
 import com.wifigatekeeper.background.PollWorker
+import com.wifigatekeeper.core.network.LanNetworkBinding
 import com.wifigatekeeper.core.network.LocalNetworkChecker
 import com.wifigatekeeper.data.db.AppDatabase
 import com.wifigatekeeper.data.repository.RouterRepository
@@ -16,6 +17,7 @@ class ServiceLocator(context: Context) {
     val credentialsStore = CredentialsStore(context)
     val settingsRepository = SettingsRepository(context)
     val networkChecker = LocalNetworkChecker(context)
+    val lanBinding = LanNetworkBinding(context)
     val notifier = Notifier(context)
     private val db = AppDatabase.get(context)
     val repository = RouterRepository(
@@ -24,6 +26,7 @@ class ServiceLocator(context: Context) {
         db,
         networkChecker,
         notifier,
+        lanBinding,
     )
 }
 

@@ -33,21 +33,26 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wifigatekeeper.data.db.KnownDeviceEntity
 import com.wifigatekeeper.data.repository.PollStatus
@@ -72,19 +77,33 @@ fun DashboardScreen(onEditCredentials: () -> Unit) {
     val macFiltering by vm.macFiltering.collectAsState()
     val logEntries by vm.activityLog.collectAsState()
     val toast by vm.toast.collectAsState()
+    val busy by vm.busy.collectAsState()
 
     var tab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Pending", "Whitelisted", "Settings")
 
     // Android 13+ silently drops notifications until POST_NOTIFICATIONS is
     // granted - without it the whole accept/reject flow never reaches the user.
+    // Re-checked on every ON_RESUME: a user who just enabled the permission in
+    // system settings must come back to a dashboard without the stale banner
+    // (a remember{} snapshot never updates).
     val context = LocalContext.current
-    val notificationsAllowed = remember {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    fun notificationsGranted(): Boolean =
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS,
             ) == PackageManager.PERMISSION_GRANTED
+    var notificationsAllowed by remember { mutableStateOf(notificationsGranted()) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsAllowed = notificationsGranted()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(toast) {
@@ -150,7 +169,7 @@ fun DashboardScreen(onEditCredentials: () -> Unit) {
                     macLabel = { device -> device.mac },
                     trailing = { device ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { vm.accept(device.mac) }, enabled = !vm.busy.value) {
+                            Button(onClick = { vm.accept(device.mac) }, enabled = !busy) {
                                 Text("Accept")
                             }
                             OutlinedButton(onClick = { vm.reject(device.mac) }) {
@@ -164,7 +183,7 @@ fun DashboardScreen(onEditCredentials: () -> Unit) {
                     emptyText = "Whitelist is empty.",
                     macLabel = { device -> device.mac },
                     trailing = { device ->
-                        OutlinedButton(onClick = { vm.revoke(device.mac) }, enabled = !vm.busy.value) {
+                        OutlinedButton(onClick = { vm.revoke(device.mac) }, enabled = !busy) {
                             Text("Revoke")
                         }
                     },
@@ -173,7 +192,7 @@ fun DashboardScreen(onEditCredentials: () -> Unit) {
                     macFiltering = macFiltering,
                     interval = interval,
                     logEntries = logEntries,
-                    protectBusy = vm.busy.value,
+                    protectBusy = busy,
                     onProtect = vm::protectNow,
                     onSetMacFiltering = vm::setMacFiltering,
                     onSetInterval = vm::setPollInterval,

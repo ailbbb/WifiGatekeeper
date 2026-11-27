@@ -21,6 +21,7 @@ class TpLinkClassicRouterClient(
     baseUrl: String,
     private val username: String,
     private val password: String,
+    socketFactory: javax.net.SocketFactory? = null,
 ) : RouterClient {
 
     override val kind = RouterKind.TP_LINK_CLASSIC
@@ -33,6 +34,7 @@ class TpLinkClassicRouterClient(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
+        .apply { socketFactory?.let { socketFactory(it) } }
         .build()
 
     private val basicHeader: String =
@@ -44,8 +46,11 @@ class TpLinkClassicRouterClient(
         val builder = Request.Builder()
             .url(url(path))
             .header("Authorization", basicHeader)
-            .header("User-Agent", "WifiGatekeeper/1.2")
-        if (referer != null) builder.header("Referer", referer)
+            .header("User-Agent", USER_AGENT)
+        // Classic firmware silently rejects state-changing requests (and some
+        // plain reads) unless the Referer matches the gateway page it issued
+        // them from - send it on every request, not only on POSTs.
+        builder.header("Referer", referer ?: url(path))
         return builder.build()
     }
 
@@ -79,7 +84,7 @@ class TpLinkClassicRouterClient(
                     .url(url(path))
                     .header("Authorization", basicHeader)
                     .header("Referer", url(path))
-                    .header("User-Agent", "WifiGatekeeper/1.2")
+                    .header("User-Agent", USER_AGENT)
                     .post(body)
                     .build()
                 http.newCall(post).execute().use { response ->
@@ -113,9 +118,12 @@ class TpLinkClassicRouterClient(
         return postForm(path, fields)
     }
 
-    private fun mapError(e: Throwable): RouterException = when (e) {
-        is RouterException -> e
-        is java.io.IOException ->
+    private fun mapError(e: Throwable): RouterException = when {
+        // Cancelling a poll is not a router failure - rethrow so structured
+        // concurrency works and no bogus "Could not reach the router" is logged.
+        e is kotlinx.coroutines.CancellationException -> throw e
+        e is RouterException -> e
+        e is java.io.IOException ->
             RouterConnectionException("Could not reach the router: ${e.message ?: e.javaClass.simpleName}", e)
         else -> RouterException("Unexpected failure: ${e.message ?: e.javaClass.simpleName}", e)
     }
@@ -251,6 +259,7 @@ class TpLinkClassicRouterClient(
     }
 
     companion object {
+        const val USER_AGENT = "WifiGatekeeper/1.5"
         private const val LOGIN_PATH = "/userRpm/LoginRpm.htm"
         private const val DHCP_LIST_PATH = "/userRpm/AssignedIpAddrListRpm.htm"
         private const val WLAN_STATIONS_PATH = "/userRpm/WlanStationRpm.htm"

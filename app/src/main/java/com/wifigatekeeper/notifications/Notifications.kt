@@ -49,7 +49,19 @@ class Notifier(private val context: Context) {
     private val manager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    /**
+     * Android 13+ silently drops (and manager.notify() THROWS SecurityException
+     * for) notifications without POST_NOTIFICATIONS - pollNow() runs on a
+     * service coroutine, so one unguarded notify() here used to kill the whole
+     * monitoring loop the moment a new device appeared with alerts disabled.
+     */
+    private fun canPost(): Boolean =
+        Build.VERSION.SDK_INT < 33 ||
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+
     fun notifyNewDevice(mac: String, name: String?, ip: String?) {
+        if (!canPost()) return
         val id = notificationId(mac)
         val contentIntent = PendingIntent.getActivity(
             context,
@@ -104,6 +116,7 @@ class Notifier(private val context: Context) {
 
     /** Shown when Accept/Reject pressed from the notification did not succeed. */
     fun notifyActionFailed(mac: String, title: String, reason: String) {
+        if (!canPost()) return
         val contentIntent = PendingIntent.getActivity(
             context,
             notificationId(mac) + 3,

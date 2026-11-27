@@ -23,6 +23,7 @@ class TpLinkNewRouterClient(
     baseUrl: String,
     private val username: String,
     private val password: String,
+    socketFactory: javax.net.SocketFactory? = null,
 ) : RouterClient {
 
     override val kind = RouterKind.TP_LINK_NEW
@@ -35,6 +36,7 @@ class TpLinkNewRouterClient(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
+        .apply { socketFactory?.let { socketFactory(it) } }
         .build()
 
     private val basicHeader: String =
@@ -44,7 +46,7 @@ class TpLinkNewRouterClient(
         .url("$base$path")
         .header("Authorization", basicHeader)
         .header("Referer", "$base$MAC_FILTER_PATH")
-        .header("User-Agent", "WifiGatekeeper/1.3")
+        .header("User-Agent", TpLinkClassicRouterClient.USER_AGENT)
         .build()
 
     /** GETs a page, mapping 401 / HTTP errors to failures. */
@@ -82,7 +84,7 @@ class TpLinkNewRouterClient(
                     .url(builder.build())
                     .header("Authorization", basicHeader)
                     .header("Referer", "$base$MAC_FILTER_PATH")
-                    .header("User-Agent", "WifiGatekeeper/1.3")
+                    .header("User-Agent", TpLinkClassicRouterClient.USER_AGENT)
                     .build()
                 http.newCall(call).execute().use { response ->
                     when {
@@ -99,9 +101,10 @@ class TpLinkNewRouterClient(
         }
     }
 
-    private fun mapError(e: Throwable): RouterException = when (e) {
-        is RouterException -> e
-        is java.io.IOException ->
+    private fun mapError(e: Throwable): RouterException = when {
+        e is kotlinx.coroutines.CancellationException -> throw e
+        e is RouterException -> e
+        e is java.io.IOException ->
             RouterConnectionException("Could not reach the router: ${e.message ?: e.javaClass.simpleName}", e)
         else -> RouterException("Unexpected failure: ${e.message ?: e.javaClass.simpleName}", e)
     }

@@ -35,6 +35,7 @@ class RouterRepository(
     private val db: AppDatabase,
     private val networkChecker: LocalNetworkChecker,
     private val notifier: Notifier,
+    private val lanBinding: com.wifigatekeeper.core.network.LanNetworkBinding? = null,
 ) {
     private val deviceDao get() = db.deviceDao()
     private val logDao get() = db.activityLogDao()
@@ -55,6 +56,9 @@ class RouterRepository(
             credentials.ip(),
             credentials.username(),
             credentials.password(),
+            // Pin requests to the Wi-Fi transport when mobile data is also up,
+            // otherwise Android may route LAN-bound calls over cellular.
+            lanBinding?.wifiSocketFactory(),
         )
     }
 
@@ -129,7 +133,14 @@ class RouterRepository(
                     System.currentTimeMillis(),
                     _pollStatus.value.deviceCount,
                 )
-                log("error", "Poll failed: ${error.message}")
+                // Diagnostics: say WHICH router kind failed and why, so an
+                // unsupported model is visible in the activity log instead of
+                // a bare "poll failed".
+                log(
+                    "error",
+                    "Poll failed on ${client.kind.label}: ${error.message} " +
+                        "(gateway ${credentials.ip()})",
+                )
             },
         )
     }
@@ -192,7 +203,9 @@ class RouterRepository(
     /**
      * Auto-protection: identifies this phone, whitelists it FIRST, and only
      * then switches MAC filtering on (the reverse order would lock the phone
-     * out of its own network).
+     * out of its own network). The switch is gated on the phone's MAC being
+     * confirmed by the router's own device list - never on a bare hardware-MAC
+     * read, which Android 10+ randomization makes wrong.
      */
     suspend fun applyProtection(): ProtectionApplier.Outcome {
         val client = client() ?: return ProtectionApplier.Outcome.Failed("No router configured yet.")
@@ -203,20 +216,20 @@ class RouterRepository(
         val entries = client.fetchConnectedDevices().getOrElse {
             return ProtectionApplier.Outcome.Failed("Could not read the device list: ${it.message}")
         }
-        val selfMac = SelfMacResolver.resolve(localIp, entries)
-            ?.let { MacAddressValidator.normalise(it) }
+        val resolved = SelfMacResolver.resolveWithConfirmation(localIp, entries)
             ?: return ProtectionApplier.Outcome.Failed(
-                "Could not identify this phone's MAC - add it manually from the router page.",
+                "Could not identify this phone's MAC - pick it from the device list " +
+                    "or add it manually from the router page.",
             )
         val label = android.os.Build.MODEL.ifBlank { "My phone" }
-        val outcome = ProtectionApplier.apply(client, selfMac, label)
+        val outcome = ProtectionApplier.apply(client, resolved.mac, label, resolved.confirmed)
         log(
             "protection",
             when (outcome) {
                 is ProtectionApplier.Outcome.FullyApplied ->
-                    "Protection applied: $label ($selfMac) whitelisted and MAC filtering enabled."
+                    "Protection applied: $label (${resolved.mac}) whitelisted and MAC filtering enabled."
                 is ProtectionApplier.Outcome.WhitelistOnly ->
-                    "$label ($selfMac) whitelisted; enabling filtering failed: ${outcome.reason}"
+                    "${resolved.mac} whitelisted; enabling filtering failed: ${outcome.reason}"
                 is ProtectionApplier.Outcome.Failed -> "Protection failed: ${outcome.message}"
             },
         )

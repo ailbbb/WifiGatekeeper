@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext policy for a LAN-only app. Router admin pages are plain HTTP on
+  private addresses (192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12) and HTTPS is
+  impossible against self-signed firmware certificates, so cleartext must stay
+  permitted. Android's default "block cleartext" policy would otherwise break
+  every router connection on API 28+ devices. Local-only traffic never leaves
+  the LAN, so the exposure is limited to the user's own router.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

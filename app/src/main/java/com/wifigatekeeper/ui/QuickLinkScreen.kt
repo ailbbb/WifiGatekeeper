@@ -101,7 +101,10 @@ fun QuickLinkScreen(
                 verifyState = VerifyState.Verifying
                 val ip = Uri.parse(controllerRef?.webView?.url ?: urlField).host
                     ?: urlField.substringAfter("//").substringBefore('/')
-                verify(scope, ip, user, pass, onLinked) { verifyState = it }
+                verify(
+                    scope, ip, user, pass, onLinked,
+                    releaseSession = { controllerRef?.releaseSession() },
+                ) { verifyState = it }
             },
             onBlocked = { host -> blockedHost = host },
             onLoadError = { message -> loadError = message },
@@ -116,7 +119,10 @@ fun QuickLinkScreen(
         verifyState = VerifyState.Verifying
         val ip = Uri.parse(controller.webView.url ?: urlField).host
             ?: urlField.substringAfter("//").substringBefore('/')
-        verify(scope, ip, username, password, onLinked) { verifyState = it }
+        verify(
+            scope, ip, username, password, onLinked,
+            releaseSession = { controller.releaseSession() },
+        ) { verifyState = it }
     }
 
     DisposableEffect(Unit) {
@@ -298,11 +304,15 @@ private fun verify(
     username: String,
     password: String,
     onLinked: (String, String, String, RouterKind) -> Unit,
+    releaseSession: () -> Unit = { },
     setState: (VerifyState) -> Unit,
 ) {
     scope.launch {
         val kind = RouterKindDetector.detect(ip, username, password)
         if (kind != null) {
+            // Detach the WebView from its keep-alive session before the native
+            // HTTP client takes over, so single-admin routers accept it.
+            releaseSession()
             setState(VerifyState.Verified(kind))
             onLinked(ip, username, password, kind)
         } else {
@@ -354,6 +364,22 @@ private class QuickLinkController(
 
     fun normalize(raw: String): String = raw.trim().let {
         if (it.startsWith("http")) it else "http://$it"
+    }
+
+    /**
+     * Best-effort session release once credentials were verified: stops page
+     * loads and keep-alives so single-admin-slot routers accept the native
+     * client that follows the quick-link handover.
+     */
+    fun releaseSession() {
+        try {
+            webView.stopLoading()
+            webView.evaluateJavascript("window.stop && window.stop();", null)
+            webView.clearCache(true)
+            webView.loadUrl("about:blank")
+        } catch (_: Throwable) {
+            // The WebView may already be tearing down; never block the handover.
+        }
     }
 
     private fun isLan(url: String?): Boolean =

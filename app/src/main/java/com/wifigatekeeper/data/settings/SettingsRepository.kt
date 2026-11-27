@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -30,6 +31,14 @@ class SettingsRepository(private val context: Context) {
             pollIntervalSeconds = prefs[KEY_INTERVAL] ?: 60,
             baselineDone = prefs[KEY_BASELINE] ?: false,
         )
+    }.catch { error ->
+        // A corrupted DataStore file must not take every collector (service
+        // poll loop, dashboard) down - fall back to safe defaults.
+        if (error !is kotlinx.coroutines.CancellationException) {
+            emit(MonitoringSettings())
+        } else {
+            throw error
+        }
     }
 
     /** One-shot read for background workers. */
@@ -40,6 +49,12 @@ class SettingsRepository(private val context: Context) {
                 pollIntervalSeconds = prefs[KEY_INTERVAL] ?: 60,
                 baselineDone = prefs[KEY_BASELINE] ?: false,
             )
+        }.catch { error ->
+            if (error !is kotlinx.coroutines.CancellationException) {
+                emit(MonitoringSettings())
+            } else {
+                throw error
+            }
         }.first()
 
     suspend fun setMonitoringEnabled(enabled: Boolean) {

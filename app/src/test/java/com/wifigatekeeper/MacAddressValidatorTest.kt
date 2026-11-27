@@ -30,9 +30,14 @@ class MacAddressValidatorTest {
     }
 
     @Test
-    fun `dash notation is rejected`() {
-        assertFalse(MacAddressValidator.isValid("AA-BB-CC-DD-EE-FF"))
-        assertNull(MacAddressValidator.normalise("AA-BB-CC-DD-EE-FF"))
+    fun `dash notation is normalised to colons`() {
+        assertTrue(MacAddressValidator.isValid("AA-BB-CC-DD-EE-FF"))
+        assertEquals("AA:BB:CC:DD:EE:FF", MacAddressValidator.normalise("aa-bb-cc-dd-ee-ff"))
+    }
+
+    @Test
+    fun `mixed separators are normalised`() {
+        assertEquals("AA:BB:CC:DD:EE:FF", MacAddressValidator.normalise("AA-BB:CC-DD:EE-FF"))
     }
 
     @Test

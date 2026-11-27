@@ -17,6 +17,7 @@ class GenericHttpRouterClient(
     baseUrl: String,
     username: String,
     password: String,
+    socketFactory: javax.net.SocketFactory? = null,
 ) : RouterClient {
 
     override val kind = RouterKind.GENERIC
@@ -29,6 +30,7 @@ class GenericHttpRouterClient(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
+        .apply { socketFactory?.let { socketFactory(it) } }
         .build()
 
     private val basicHeader: String =
@@ -50,7 +52,7 @@ class GenericHttpRouterClient(
     private fun request(path: String): Request = Request.Builder()
         .url("$base$path")
         .header("Authorization", basicHeader)
-        .header("User-Agent", "WifiGatekeeper/1.2")
+        .header("User-Agent", TpLinkClassicRouterClient.USER_AGENT)
         .build()
 
     private suspend fun getHtml(path: String): Result<String> =
@@ -70,9 +72,10 @@ class GenericHttpRouterClient(
             Result.failure(mapError(e))
         }
 
-    private fun mapError(e: Throwable): RouterException = when (e) {
-        is RouterException -> e
-        is java.io.IOException ->
+    private fun mapError(e: Throwable): RouterException = when {
+        e is kotlinx.coroutines.CancellationException -> throw e
+        e is RouterException -> e
+        e is java.io.IOException ->
             RouterConnectionException("Could not reach the router: ${e.message ?: e.javaClass.simpleName}", e)
         else -> RouterException("Unexpected failure: ${e.message ?: e.javaClass.simpleName}", e)
     }
